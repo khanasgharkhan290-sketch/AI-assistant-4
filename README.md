@@ -1,4 +1,3 @@
-# AI-assistant-4
 # 📄 ATS Resume Checker
 
 A Streamlit app that analyzes your resume like an Applicant Tracking System (ATS) would. Upload a resume, optionally paste a job description, and get:
@@ -65,7 +64,7 @@ The app checks, in order: sidebar input, Streamlit secrets, environment variable
 
 ## Configuration
 
-- **Model**: change it in the sidebar, or edit `DEFAULT_MODEL` in `app.py` (default `gemini-2.5-flash`).
+- **Model**: change it in the sidebar, or edit `DEFAULT_MODEL` in `app.py` (default `gemini-3.8-flash`).
 - **Score weights**: edit `CATEGORY_WEIGHTS` in `app.py`.
 
 ## Privacy
