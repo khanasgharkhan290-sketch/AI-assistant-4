@@ -24,7 +24,7 @@ from pypdf import PdfReader
 # --------------------------------------------------------------------------- #
 # Configuration
 # --------------------------------------------------------------------------- #
-DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_MODEL = "gemini-3.8-flash"
 MAX_RESUME_CHARS = 15000  # keeps the prompt small and fast
 MAX_JD_CHARS = 6000
 
@@ -255,7 +255,6 @@ def analyze_resume(api_key: str, model: str, resume_text: str, job_description: 
         model=model,
         contents=build_prompt(resume_text, job_description, checks),
         config=types.GenerateContentConfig(
-            temperature=0.2,
             response_mime_type="application/json",
         ),
     )
