@@ -14,6 +14,7 @@ import io
 import json
 import os
 import re
+import time
 
 import streamlit as st
 from docx import Document
@@ -25,6 +26,8 @@ from pypdf import PdfReader
 # Configuration
 # --------------------------------------------------------------------------- #
 DEFAULT_MODEL = "gemini-3.8-flash"
+FALLBACK_MODELS = ["gemini-3.7-flash"]  # tried if the main model is overloaded or unavailable
+RETRY_DELAYS = [2, 5]  # seconds to wait between retries on the same model
 MAX_RESUME_CHARS = 15000  # keeps the prompt small and fast
 MAX_JD_CHARS = 6000
 
@@ -249,16 +252,39 @@ def normalize_result(data: dict) -> dict:
     }
 
 
+def _is_overloaded(exc: Exception) -> bool:
+    msg = str(exc)
+    return any(t in msg for t in ("503", "UNAVAILABLE", "high demand", "overloaded", "INTERNAL"))
+
+
+def _is_model_missing(exc: Exception) -> bool:
+    msg = str(exc)
+    return "404" in msg or "NOT_FOUND" in msg
+
+
 def analyze_resume(api_key: str, model: str, resume_text: str, job_description: str, checks: list[dict]) -> dict:
+    """Call Gemini. Retries when overloaded (503) and falls back to another model if needed."""
     client = genai.Client(api_key=api_key)
-    response = client.models.generate_content(
-        model=model,
-        contents=build_prompt(resume_text, job_description, checks),
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-        ),
-    )
-    return normalize_result(parse_json_response(response.text))
+    prompt = build_prompt(resume_text, job_description, checks)
+    config = types.GenerateContentConfig(response_mime_type="application/json")
+
+    models = [model] + [m for m in FALLBACK_MODELS if m != model]
+    last_error: Exception = RuntimeError("No model was tried.")
+    for name in models:
+        for attempt in range(len(RETRY_DELAYS) + 1):
+            try:
+                response = client.models.generate_content(model=name, contents=prompt, config=config)
+                return normalize_result(parse_json_response(response.text))
+            except Exception as exc:
+                last_error = exc
+                if _is_model_missing(exc):
+                    break  # this model name is gone: go straight to the next one
+                if not _is_overloaded(exc):
+                    raise  # e.g. invalid API key, bad request: retrying won't help
+                if attempt < len(RETRY_DELAYS):
+                    time.sleep(RETRY_DELAYS[attempt])
+                # else: out of retries, move on to the next model
+    raise last_error
 
 
 # --------------------------------------------------------------------------- #
@@ -433,7 +459,13 @@ def main() -> None:
                 st.error(str(exc))
             except Exception as exc:  # network, quota, invalid key, bad model name ...
                 st.session_state.pop("result", None)
-                st.error(f"Analysis failed: {exc}")
+                if _is_overloaded(exc):
+                    st.error(
+                        "Google's Gemini servers are overloaded right now (temporary). "
+                        "Please wait a minute and click Analyze again."
+                    )
+                else:
+                    st.error(f"Analysis failed: {exc}")
 
     if "result" in st.session_state:
         render_results(st.session_state["result"], st.session_state["checks"])
